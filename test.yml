@@ -1,0 +1,18 @@
+---
+- hosts: front
+
+  gather_facts: False
+  become: False
+
+  tasks:
+
+  - name: Get user name
+    raw: whoami
+    register: deploy_user
+
+  - name: Display Msg deploy_user
+    debug:
+      msg: "{{deploy_user.stdout_lines}}"
+
+  - name: Display Var deploy_user
+    debug: var=deploy_user

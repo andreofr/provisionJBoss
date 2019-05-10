@@ -1,0 +1,4 @@
+---
+
+- import_playbook: userJboss.yml
+- import_playbook: deployJboss.yml

@@ -1,0 +1,28 @@
+---
+- hosts: front
+
+  gather_facts: False
+  become: True
+
+  tasks:
+
+  - name: Get user name
+    raw: whoami
+    register: deploy_user
+
+  - name: Display Msg deploy_user
+    debug:
+      msg: "{{deploy_user.stdout_lines}}"
+
+  - name: Display Var deploy_user
+    debug: var=deploy_user
+
+  - name: copy
+    copy:
+      src: ./test.yml
+      dest: /opt/jboss/test/work/
+
+  - name: delete
+    file:
+      path: /opt/jboss/test/work/test.yml
+      state: absent

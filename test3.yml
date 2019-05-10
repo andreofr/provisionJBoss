@@ -1,0 +1,15 @@
+---
+- hosts: front
+
+  gather_facts: False
+  become: False
+
+  vars:
+    content: 'PRS_JBOSS'
+
+  tasks:
+
+  - name: Machine JBOSS into Zrole
+    copy:
+      content: "{{ content | join('\n') }}"
+      dest: /tmp/Zrole

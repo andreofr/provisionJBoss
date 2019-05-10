@@ -1,0 +1,68 @@
+---
+- hosts: front
+
+  gather_facts: False
+  become: False
+
+  tasks:
+
+  - name: Get user name
+    raw: whoami
+    register: deploy_user
+
+  - name: Make dir .ssh for {{deploy_user.stdout_lines}}
+    raw: mkdir -p -m777 .ssh
+
+  - name: Create authorized_keys for {{deploy_user.stdout_lines}} 
+    raw: touch .ssh/authorized_keys
+
+  - name: Permission to authorized_keys for {{deploy_user.stdout_lines}}
+    raw: chmod 666 .ssh/authorized_keys
+      
+  - name: Local update known_hosts
+    local_action: command ssh-keyscan -H -T 10 {{inventory_hostname}} >> ~/.ssh/known_hosts
+
+  - name: Deploy ssh public key for {{deploy_user.stdout_lines}}
+    local_action: >
+      command scp ~/.ssh/id_rsa.pub  
+      "{{deploy_user.stdout|trim}}"@"{{inventory_hostname}}":~/.ssh/authorized_keys
+
+  - name: Permission to .ssh for {{deploy_user.stdout_lines}}
+    raw: chmod 0700 .ssh/
+
+  - name: Permission to authorized_keys for {{deploy_user.stdout_lines}}
+    raw: chmod 0600 .ssh/authorized_keys
+
+- hosts: front
+
+  gather_facts: False
+  become: True
+
+  vars:
+    user: 'jboss'
+
+  vars_prompt:
+  
+  - name: 'passw_jboss'
+    prompt: "Enter a password for the jboss user "
+    private: yes
+  
+  tasks:
+
+  - name: Add user {{user}}
+    user:
+      name: "{{user}}"
+      password: "{{passw_jboss| password_hash('sha512')}}"
+      uid: 1004
+
+  - name: Make dir .ssh for {{user}}
+    file:
+      path: ../{{user}}/.ssh
+      mode: 0700
+      state: directory
+     
+  - name: Deploy ssh public key for {{user}}
+    authorized_key:
+      user: "{{user}}"
+      key: "{{ lookup('file', '~/.ssh/id_rsa.pub') }}"
+...

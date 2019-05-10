@@ -1,0 +1,171 @@
+---
+- hosts: front
+
+  gather_facts: True
+  become: True 
+
+  vars:
+    volumeGroup:      'appvg'
+    logicalVolumeJob:    'lvjob'
+    logicalVolumeData:   'lvdata'
+    directoryPathJob:    '/zfs/job'
+    directoryPathData:   '/data'
+    directoryTempo:    '/opt/tempo'
+    sizeJob:             '1000M'
+    sizeData:            '12G'
+    filesystemDeviceJob: "/dev/{{volumeGroup}}/{{logicalVolumeJob}}"
+    filesystemDeviceData: "/dev/{{volumeGroup}}/{{logicalVolumeData}}"
+    fstype:           'ext4'
+    mountOptions:     'defaults'
+    url_scripts: 'http://czvtl1721102.n18.an.cnav/scripts'
+    url_nexus: 'http://artifact.dev.n18.an.cnav/content/repositories/releases'
+    path_jboss: '/cnav/architech/appserver/jboss-cnav/1.4.3/jboss-cnav-1.4.3-7-1-0.zip'
+
+  tasks:
+
+#####################################################################################
+#####################################  Download scripts   ###########################
+#####################################################################################
+
+  - name: CentOS current version
+    set_fact:
+      current_version: '{{ansible_distribution_major_version}}'
+    when: ansible_distribution_major_version | version_compare('7', '>=')
+
+#  - name: Display ansible_distribution_major
+#    debug:
+#      var: '{{current_version|default()}}'
+#    when: current_version is defined
+
+  - name: Creating directories
+    file:
+      path: "{{item}}"
+      state: directory
+    with_items:
+    - /opt/cni
+    - /etc/cni
+
+  - name: Download scripts  
+    get_url:
+      url: "{{url_scripts}}/{{item}}"
+      dest: /opt/cni/
+      mode: 0700
+    with_items: 
+    - "{{'zabbix' + current_version}}"
+    - zsudo
+    - bkman
+    - security
+
+  - name: Machine JBOSS into Zrole
+    copy:
+      content: "PRS_JBOSS\n"
+      dest: /etc/cni/Zrole
+
+  - name: Run Zabbix
+    command: "/opt/cni/{{'zabbix' + current_version}}"
+    args:
+      creates: /opt/cni/system
+
+#####################################################################################
+#####################################  Installation Bkman ###########################
+#####################################################################################
+
+  - name: Create LVM logical volume {{logicalVolumeJob}}
+    lvol:
+      vg: "{{volumeGroup}}"
+      lv: "{{logicalVolumeJob}}"
+      size: "{{sizeJob}}"
+
+  - name: Create Filesystem
+    filesystem:
+      fstype: "{{fstype}}"
+      dev: "{{filesystemDeviceJob}}"
+
+  - name: Create dir {{directoryPathJob}}
+    file:
+      path: "{{directoryPathJob}}" 
+      state: directory
+      mode: 0755
+
+  - name: Mount directory {{directoryPathJob}} to LVM
+  # This will also add to /etc/fstab 
+    mount:
+      path: "{{directoryPathJob}}"
+      src: "/dev/mapper/{{volumeGroup + '-' + logicalVolumeJob}}" 
+      fstype: "{{fstype}}"
+      opts: "{{mountOptions}}" 
+      dump: '1'
+      passno: '2'
+      state: mounted
+
+  - name: Run bkman
+    command: "/opt/cni/bkman"
+    args:
+      creates: /zfs/job/fic
+
+#####################################################################################
+#####################################  Installation Jboss ###########################
+#####################################################################################
+  - name: Create dir {{directoryTempo}}
+    file:
+      path: "{{directoryTempo}}"
+      state: directory
+      mode: 0777
+
+  - name: Download jboss-cnav
+    unarchive:
+      src: "{{url_nexus + path_jboss}}"
+      dest: "{{directoryTempo}}/"
+      remote_src: yes
+
+  - name: Run jboss_infrastructure_install.sh
+    command: "{{directoryTempo}}/jboss_infrastructure_install.sh"
+    args:
+      chdir: "{{directoryTempo}}"
+      creates: /opt/jboss
+
+  - name: Create LVM logical volume {{logicalVolumeData}}
+    lvol:
+      vg: "{{volumeGroup}}"
+      lv: "{{logicalVolumeData}}"
+      size: "{{sizeData}}"
+
+  - name: Create Filesystem
+    filesystem:
+      fstype: "{{fstype}}"
+      dev: "{{filesystemDeviceData}}"
+
+  - name: Create dir {{directoryPathData}}
+    file:
+      path: "{{directoryPathData}}" 
+      state: directory
+      mode: 0755
+
+  - name: Mount directory {{directoryPathData}} to LVM
+  # This will also add to /etc/fstab 
+    mount:
+      path: "{{directoryPathData}}"
+      src: "/dev/mapper/{{volumeGroup + '-' + logicalVolumeData}}" 
+      fstype: "{{fstype}}"
+      opts: "{{mountOptions}}" 
+      dump: '1'
+      passno: '2'
+      state: mounted
+
+  - name: Change owner & group
+    file:
+      path: "{{item}}"
+      state: directory
+      recurse: yes
+      owner: jboss
+      group: jboss
+    with_items: 
+    - /opt/jboss
+    - /logs
+    - /data
+
+  - name: Add user into cron
+    lineinfile:
+      path: /etc/cron.allow
+      line: 'jboss'
+
